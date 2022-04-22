@@ -1,0 +1,76 @@
+version: "3.9"
+
+networks:
+  sword-compose-network:
+    driver: bridge
+
+services:
+  db:
+    platform: linux/x86_64
+    image: mysql:5.7
+    volumes:
+      - ./etc/volumes/mysql/data:/var/lib/mysql
+    restart: on-failure
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sword
+      MYSQL_USER: sword
+      MYSQL_PASSWORD: sword
+    networks:
+      - sword-compose-network
+
+  rabbitmq:
+    image: "rabbitmq:3.9.11-management"
+    container_name: rabbitmq
+    restart: "always"
+    volumes:
+        - ./etc/rabbitmq/conf:/etc/rabbitmq/
+    ports:
+        - 4369:4369
+        - 5672:5672    #amqp
+        - 5673:5673
+        - 15672:15672  #http
+        - 15692:15692  #prometheus
+    healthcheck:
+        test: [ "CMD", "rabbitmqctl", "status"]
+        interval: 5s
+        timeout: 20s
+        retries: 5
+    networks:
+        - sword-compose-network  
+
+  sword-app:
+    container_name: sword-app
+    command: /bin/bash
+    tty: true
+    volumes:
+      - .:/sword-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - db
+      - rabbitmq
+    external_links:
+      - rabbitmq
+      - db
+    ports:
+      - "8081:8080"
+    environment:
+      PORT: "6060"
+      TASK_QUEUE: "task_updated"
+      RABBIT_HOST: "localhost:5672"
+      RABBIT_USERNAME: "guest"
+      RABBIT_PASSWORD: "guest"
+      DB_USER: "root"
+      DB_PASSWORD: "root"
+      DB_HOST: "localhost:3307"
+      DB_NAME: "sword"
+    networks:
+      - sword-compose-network
+
+volumes:
+  mysql_sword_data:
+    external: true
